@@ -1,0 +1,14 @@
+llm-security-gates
+Copyright 2026 Gexiro Global Enterprises Ltd.
+
+This product is a thin orchestration layer over third-party, independently
+licensed open-source security tools. It does not vendor their source. Each is
+installed separately (see the optional dependencies in pyproject.toml) and
+remains under its own license and copyright:
+
+  - ModelScan  (ProtectAI)        Apache-2.0   https://github.com/protectai/modelscan
+  - LLM Guard  (ProtectAI)        MIT          https://github.com/protectai/llm-guard
+  - garak      (NVIDIA)           Apache-2.0   https://github.com/NVIDIA/garak
+
+All trademarks are the property of their respective owners. This project is not
+affiliated with or endorsed by ProtectAI or NVIDIA.

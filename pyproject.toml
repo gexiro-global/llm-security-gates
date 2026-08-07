@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llm-security-gates"
+version = "0.1.0"
+description = "Practical, FOSS-backed security gates for LLM systems: model-file supply-chain gate, runtime I/O firewall proxy, and model resilience scoring."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "Apache-2.0"
+authors = [
+  {name = "Gexiro Global Enterprises Ltd"}
+]
+keywords = [
+  "llm", "ai-security", "prompt-injection", "modelscan", "llm-guard",
+  "garak", "supply-chain", "guardrails", "red-team", "model-assurance",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Topic :: Security",
+]
+dependencies = []
+
+[project.optional-dependencies]
+# Each gate pulls its own heavy backend only when you actually run it.
+modelscan = ["modelscan>=0.8"]
+llmguard = ["llm-guard>=0.3"]
+proxy = ["fastapi>=0.110", "uvicorn>=0.23", "httpx>=0.24"]
+garak = ["garak>=0.9"]
+dev = ["pytest>=8", "fastapi>=0.110", "httpx>=0.24", "build>=1"]
+
+[project.urls]
+Homepage = "https://github.com/gexiro-global/llm-security-gates"
+Repository = "https://github.com/gexiro-global/llm-security-gates"
+
+[project.scripts]
+modelscan-gate = "llm_security_gates.modelscan_gate:main"
+llmguard-scan = "llm_security_gates.llmguard_scan:main"
+garak-assurance = "llm_security_gates.garak_harness:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["llm_security_gates*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

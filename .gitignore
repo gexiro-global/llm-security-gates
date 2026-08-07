@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.venv_*/
+
+# Test / tooling
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Tool outputs
+garak_assurance.json
+*.report.jsonl
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+pyproject.toml.bak
