@@ -145,6 +145,7 @@ def score_model(model, base_url, api_key, probes, generations, index, timeout,
             out["status"] = f"ERROR: garak exited {proc.returncode} (run not trusted)"
             return out
         evals = parse_report(prefix, report_dir, min_mtime=min_mtime)
+        _require_probe_coverage(evals, probes)
         scored = score_from_evals(evals)
         out.update(scored)
         if scored["resilience_score"] is None:
@@ -183,8 +184,7 @@ def main(argv=None) -> int:
     for i, m in enumerate(models):
         print(f"[garak-harness] scoring {m} ...", file=sys.stderr)
         results.append(score_model(m, args.base_url, api_key, args.probes,
-                                   args.generations, i, args.timeout,
-                                   start_time=_time.time()))
+                                   args.generations, i, args.timeout))
 
     report = {"schema": "model-assurance/v1",
               "generated_at": datetime.now(timezone.utc).isoformat(),

@@ -113,6 +113,26 @@ def score_from_evals(evals: dict) -> dict:
     }
 
 
+def _probe_module(name):
+    """First dotted component of a probe path, e.g. 'promptinject.X' -> 'promptinject'."""
+    return str(name).split(".", 1)[0]
+
+
+def _require_probe_coverage(evals, requested_probes):
+    """Raise AssuranceError if any requested probe module has no eval entry.
+
+    Guards against an rc=0 but truncated/partial report that scores 'OK' while
+    silently omitting requested probes. Matching is at module granularity to stay
+    robust across garak's probe-naming across versions.
+    """
+    requested = {_probe_module(p) for p in
+                 [x.strip() for x in str(requested_probes).split(",") if x.strip()]}
+    present = {_probe_module(probe) for (probe, _detector) in evals}
+    missing = requested - present
+    if missing:
+        raise AssuranceError(f"report missing requested probe(s): {sorted(missing)}")
+
+
 def _new_prefix(model, index):
     return f"selftest_{_safe(model)}_{index}_{uuid.uuid4().hex[:8]}"
 
@@ -145,6 +165,7 @@ def score_model(model, base_url, api_key, probes, generations, index, timeout,
             out["status"] = f"ERROR: garak exited {proc.returncode} (run not trusted)"
             return out
         evals = parse_report(prefix, report_dir, min_mtime=min_mtime)
+        _require_probe_coverage(evals, probes)
         scored = score_from_evals(evals)
         out.update(scored)
         if scored["resilience_score"] is None:

@@ -150,6 +150,23 @@ def test_score_model_rejects_backdated_report(monkeypatch, tmp_path):
     assert "stale" in out["status"]
 
 
+def test_score_model_rejects_partial_probe_coverage(monkeypatch, tmp_path):
+    # rc=0 but the report only covers probe 'a' while 'a,b' were requested.
+    monkeypatch.setattr(gh, "_run_garak",
+                        _fake_garak_writing(tmp_path, [json.dumps(_eval("a", "d", 5, 10))], 0))
+    out = gh.score_model("m", "http://x/v1", "key", "a,b", 1, 0, 60, report_dir=str(tmp_path))
+    assert out["resilience_score"] is None
+    assert "missing requested probe" in out["status"]
+
+
+def test_require_probe_coverage_matches_module_prefix():
+    # eval probe 'promptinject.HijackX' covers requested 'promptinject'
+    evals = {("promptinject.HijackX", "d"): _eval("promptinject.HijackX", "d", 1, 1)}
+    gh._require_probe_coverage(evals, "promptinject")  # no raise
+    with pytest.raises(gh.AssuranceError):
+        gh._require_probe_coverage(evals, "promptinject,leakreplay")
+
+
 def test_new_prefix_is_unique():
     a = gh._new_prefix("m", 0)
     b = gh._new_prefix("m", 0)

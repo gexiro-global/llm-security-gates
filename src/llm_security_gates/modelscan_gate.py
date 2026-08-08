@@ -74,12 +74,16 @@ def validate_report(report) -> dict:
     # mismatch means a truncated or tampered summary -- do not trust it.
     sev = summary["total_issues_by_severity"]
     try:
-        sev_sum = sum(int(v or 0) for v in sev.values())
+        counts = {k: int(v or 0) for k, v in sev.items()}
         total = int(summary.get("total_issues", 0) or 0)
     except (TypeError, ValueError) as exc:
         raise ScanError(f"non-numeric issue counts in summary: {exc}")
-    if sev_sum != total:
-        raise ScanError(f"summary inconsistent: severities sum to {sev_sum} "
+    # Counts must be non-negative. A negative count (e.g. HIGH=-1, CRITICAL=1)
+    # can cancel a real issue out of the blocking sum and forge a PASS.
+    if total < 0 or any(v < 0 for v in counts.values()):
+        raise ScanError(f"negative issue count in summary: {counts} total={total}")
+    if sum(counts.values()) != total:
+        raise ScanError(f"summary inconsistent: severities sum to {sum(counts.values())} "
                         f"but total_issues={total}")
     return report
 

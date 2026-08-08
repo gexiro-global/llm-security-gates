@@ -105,6 +105,15 @@ def test_decide_rejects_inconsistent_summary():
         mg.decide(rep, "HIGH")
 
 
+def test_decide_rejects_negative_counts():
+    # HIGH=-1 + CRITICAL=1 sums to 0 (consistent) but would cancel a real issue
+    # out of the blocking count and forge a PASS. Must be rejected.
+    rep = {"summary": {"total_issues_by_severity": {"HIGH": -1, "CRITICAL": 1},
+                       "total_issues": 0, "modelscan_version": "0.8.8"}}
+    with pytest.raises(mg.ScanError):
+        mg.decide(rep, "HIGH")
+
+
 # ---- has_scan_errors() ----
 
 def test_has_scan_errors_list_and_singular():
