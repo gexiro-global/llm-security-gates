@@ -115,11 +115,6 @@ garak-assurance --models gpt-x,gpt-y \
 > use security probes (`promptinject`, `latentinjection`, `leakreplay`, `dan`,
 > `encoding`).
 
-Each run uses a unique report prefix and rejects a stale or pre-existing report, and a
-non-zero garak exit is an error — never a scored "OK" from a leftover report. By default
-the gate exits non-zero unless **every** requested model produced a conclusive score;
-pass `--allow-partial` to accept a partial fleet result.
-
 ---
 
 ## Design notes

@@ -26,11 +26,12 @@ dependencies = []
 
 [project.optional-dependencies]
 # Each gate pulls its own heavy backend only when you actually run it.
-modelscan = ["modelscan>=0.8"]
-llmguard = ["llm-guard>=0.3"]
-proxy = ["fastapi>=0.110", "uvicorn>=0.23", "httpx>=0.24"]
-garak = ["garak>=0.9"]
-dev = ["pytest>=8", "fastapi>=0.110", "httpx>=0.24", "build>=1"]
+# Upper bounds are tested ceilings; CI should additionally use a hash-locked set.
+modelscan = ["modelscan>=0.8,<1"]
+llmguard = ["llm-guard>=0.3,<0.4"]
+proxy = ["fastapi>=0.110,<1", "uvicorn>=0.23,<1", "httpx>=0.24,<1"]
+garak = ["garak>=0.9,<1"]
+dev = ["pytest>=8,<10", "fastapi>=0.110,<1", "httpx>=0.24,<1", "build>=1,<2"]
 
 [project.urls]
 Homepage = "https://github.com/gexiro-global/llm-security-gates"

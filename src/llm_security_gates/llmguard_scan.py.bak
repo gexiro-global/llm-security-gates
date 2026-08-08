@@ -111,11 +111,11 @@ def scan_input(text, scanners):
 
 def scan_output_text(prompt, output, scanners):
     """Scan a model reply. Zero output scanners is a valid (pass-through) config."""
+    from llm_guard import scan_output
     t0 = time.perf_counter()
     if not scanners:
         return _shape("output", output, output, {}, {},
                       round((time.perf_counter() - t0) * 1000, 1))
-    from llm_guard import scan_output
     sanitized, valid, scores = scan_output(scanners, prompt, output)
     if not valid:
         raise RuntimeError("output scanners returned no verdicts; refusing to pass")

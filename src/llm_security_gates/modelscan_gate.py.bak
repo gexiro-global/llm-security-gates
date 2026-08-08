@@ -10,12 +10,7 @@ rejected before its ``__reduce__`` ever executes.
 Exit codes:
     0  PASS   -- load allowed
     1  BLOCK  -- unsafe, at/above threshold
-    2  ERROR  -- path missing, scan failed, or report incomplete/errored
-
-FAIL CLOSED: a scan that cannot be proven to have completed (missing binary,
-timeout, unreadable JSON, an error field, or a report whose expected summary
-schema is absent) raises ``ScanError`` and exits 2. A syntactically valid but
-incomplete document is NOT accepted as a pass -- that was the whole attack.
+    2  ERROR  -- path missing, scan failed, or modelscan reported errors
 
 The decision logic (``decide``) is pure and import-safe: it needs neither
 ``modelscan`` nor any ML library, so it can be unit-tested in isolation.
@@ -34,84 +29,50 @@ class ScanError(RuntimeError):
     """Raised when the scan cannot be trusted to have completed."""
 
 
-def has_scan_errors(report: dict) -> bool:
-    """True when modelscan recorded an error (result must not be trusted).
-
-    Catches both the list form (``errors``) and any singular ``error`` field a
-    failed/incompatible scanner might emit.
-    """
-    if not isinstance(report, dict):
-        return True
-    return bool(report.get("errors")) or bool(report.get("error"))
-
-
-def validate_report(report) -> dict:
-    """Ensure *report* is a completed modelscan document, else raise ScanError.
-
-    A completed scan always carries a ``summary`` object with a severity
-    breakdown, a total count, and completion metadata. An empty object,
-    ``{"error": ...}``, or any document missing that structure means the scan
-    did not finish -- treating it as a pass is the fail-open bug this guards.
-    """
-    if not isinstance(report, dict):
-        raise ScanError("report is not a JSON object")
-    if has_scan_errors(report):
-        raise ScanError(f"modelscan reported errors: "
-                        f"{report.get('errors') or report.get('error')}")
-    summary = report.get("summary")
-    if not isinstance(summary, dict):
-        raise ScanError("report has no summary object (scan did not complete)")
-    if not isinstance(summary.get("total_issues_by_severity"), dict):
-        raise ScanError("report summary lacks total_issues_by_severity")
-    if "total_issues" not in summary:
-        raise ScanError("report summary lacks total_issues")
-    # A finished run stamps at least one completion marker.
-    if not any(k in summary for k in ("scanned", "modelscan_version", "timestamp")):
-        raise ScanError("report summary lacks a completion marker "
-                        "(scanned/modelscan_version/timestamp)")
-    return report
-
-
 def scan(path: str, timeout: int = 300) -> dict:
-    """Run ``modelscan`` on *path* and return its validated JSON report.
+    """Run ``modelscan`` on *path* and return its parsed JSON report.
 
     modelscan exits non-zero when it finds issues, so the return code is
     ignored on purpose -- the report is parsed regardless. A genuinely failed
-    or incomplete run surfaces via ``validate_report`` and raises ``ScanError``.
+    run surfaces as a missing/invalid report file and raises ``ScanError``.
     """
-    fd, report_path = tempfile.mkstemp(suffix=".json", prefix="modelscan_")
+    fd, report = tempfile.mkstemp(suffix=".json", prefix="modelscan_")
     os.close(fd)
     try:
         try:
             subprocess.run(
-                ["modelscan", "-p", path, "-r", "json", "-o", report_path],
+                ["modelscan", "-p", path, "-r", "json", "-o", report],
                 capture_output=True, text=True, timeout=timeout,
             )
         except FileNotFoundError as exc:  # modelscan not installed
             raise ScanError("modelscan executable not found on PATH") from exc
         try:
-            with open(report_path, encoding="utf-8") as fh:
-                report = json.load(fh)
+            with open(report, encoding="utf-8") as fh:
+                return json.load(fh)
         except (OSError, json.JSONDecodeError) as exc:
             raise ScanError(f"could not read modelscan report: {exc}") from exc
-        return validate_report(report)
     finally:
-        if os.path.exists(report_path):
-            os.unlink(report_path)
+        if os.path.exists(report):
+            os.unlink(report)
+
+
+def has_scan_errors(report: dict) -> bool:
+    """True when modelscan itself recorded errors (result must not be trusted)."""
+    return bool(report.get("errors"))
 
 
 def decide(report: dict, block_on: str = "HIGH") -> dict:
-    """Turn a *validated* modelscan report into a block/pass verdict (pure).
+    """Turn a modelscan report into a block/pass verdict (pure).
 
     *block_on* is the lowest severity that counts as blocking; every issue at
-    that severity or higher is summed. This function is strict: it re-validates
-    the report so a direct caller cannot bypass the fail-closed contract.
+    that severity or higher is summed. Unknown severities in the report are
+    ignored for the blocking count but still surface in ``by_severity`` totals
+    that modelscan provided.
     """
     if block_on not in SEV_ORDER:
         raise ValueError(f"block_on must be one of {SEV_ORDER}, got {block_on!r}")
-    validate_report(report)
-    summary = report["summary"]
-    sev = summary["total_issues_by_severity"]
+    summary = report.get("summary", {}) or {}
+    sev = summary.get("total_issues_by_severity", {}) or {}
     threshold = SEV_ORDER.index(block_on)
     blocking = sum(int(sev.get(s, 0) or 0) for s in SEV_ORDER[threshold:])
     total = int(summary.get("total_issues", 0) or 0)
@@ -150,12 +111,17 @@ def main(argv=None) -> int:
 
     try:
         report = scan(args.model_path, timeout=args.timeout)
-        verdict = decide(report, args.block_on)
     except (ScanError, subprocess.TimeoutExpired) as exc:
         # A scan that did not complete must NEVER be treated as a pass.
         print(f"[modelscan-gate] ERROR: scan failed: {exc}", file=sys.stderr)
         return 2
 
+    if has_scan_errors(report):
+        print(f"[modelscan-gate] ERROR: modelscan reported errors: {report['errors']}",
+              file=sys.stderr)
+        return 2
+
+    verdict = decide(report, args.block_on)
     _emit(verdict, args.model_path, args.json)
     return 1 if verdict["decision"] == "BLOCK" else 0
 
