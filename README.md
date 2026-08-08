@@ -1,6 +1,7 @@
 # llm-security-gates — prompt-injection, model supply-chain, and red-team gates for LLMs
 
 [![ci](https://github.com/gexiro-global/llm-security-gates/actions/workflows/ci.yml/badge.svg)](https://github.com/gexiro-global/llm-security-gates/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/llm-security-gates.svg)](https://pypi.org/project/llm-security-gates/)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
 
@@ -23,19 +24,14 @@ gate you actually use.
 
 ## Install
 
-> **PyPI publication is pending.** Install from source for now:
-
 ```bash
-# core (no ML backends)
-pip install "git+https://github.com/gexiro-global/llm-security-gates.git"
-
-# add just the backend for the gate you use, e.g. the proxy + LLM Guard:
-pip install "llm-security-gates[llmguard,proxy] @ git+https://github.com/gexiro-global/llm-security-gates.git"
-# other extras: [modelscan], [garak]
+pip install llm-security-gates                    # core (no ML backends)
+pip install "llm-security-gates[modelscan]"       # + ModelScan
+pip install "llm-security-gates[llmguard,proxy]"  # + LLM Guard + the proxy server
+pip install "llm-security-gates[garak]"           # + garak
 ```
 
-Once published this will simply be `pip install "llm-security-gates[...]"`. Each gate is
-usable on its own; you never need to install a backend you don't run.
+Each gate is usable on its own; you never need to install a backend you don't run.
 
 ---
 
