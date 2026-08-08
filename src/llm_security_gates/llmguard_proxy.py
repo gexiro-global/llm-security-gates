@@ -40,10 +40,6 @@ OUTPUT_SCANNERS = parse_scanner_names(os.environ.get(
 BLOCK_MODE = os.environ.get("GUARD_BLOCK_MODE", "refuse")
 UPSTREAM_TIMEOUT = float(os.environ.get("UPSTREAM_TIMEOUT", "120"))
 
-# Roles whose content is attacker-controlled and must be scanned. The assistant
-# role is the model's own prior output, not inbound user content.
-SCANNED_ROLES = {"user", "system", "developer", "tool"}
-
 _STATE = {"in": None, "out": None}
 
 
@@ -123,18 +119,20 @@ def _last_user(messages):
 
 
 def collect_scan_text(messages):
-    """Concatenate text from EVERY inbound (non-assistant) message (pure).
+    """Concatenate text from EVERY message in the request (pure).
 
-    Scanning only the last user message let a caller hide an injection in an
-    earlier user/system message and end with benign text. This scans them all.
+    A reverse proxy re-receives the whole conversation from the client each
+    turn, so every message -- including any `assistant`-role message the client
+    supplies -- is attacker-controlled and must be scanned. Scanning only the
+    last user message (or only non-assistant roles) let a caller hide an
+    injection elsewhere in the payload and finish with benign text.
     """
     parts = []
     for m in messages or []:
-        if not isinstance(m, dict):
-            parts.append(str(m))
-            continue
-        if m.get("role", "user") in SCANNED_ROLES:
+        if isinstance(m, dict):
             parts.append(_message_text(m.get("content")))
+        else:
+            parts.append(str(m))
     return "\n".join(p for p in parts if p)
 
 

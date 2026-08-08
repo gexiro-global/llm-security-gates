@@ -2,8 +2,8 @@
 """LLM Guard runtime firewall -- an OpenAI-compatible reverse proxy.
 
 Sits in front of any OpenAI-compatible chat backend (e.g. a local gateway on
-``:4000``). It scans the user prompt before forwarding upstream and the model
-reply before returning it, blocking either side on policy.
+``:4000``). It scans the *entire* inbound message set before forwarding and the
+model reply before returning it, blocking either side on policy.
 
 Environment:
     BACKEND_URL       upstream base (default http://127.0.0.1:4000/v1)
@@ -27,8 +27,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from .llmguard_scan import (
-    build_input_scanners, build_output_scanners, parse_scanner_names,
-    scan_input, scan_output_text,
+    ScanConfigError, build_input_scanners, build_output_scanners,
+    parse_scanner_names, scan_input, scan_output_text,
 )
 
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://127.0.0.1:4000/v1").rstrip("/")
@@ -50,9 +50,14 @@ def set_scanners(input_scanners, output_scanners):
 
 
 def load_scanners():
-    """Build the configured scanner sets (pulls in llm-guard). Idempotent."""
+    """Build the configured scanner sets (pulls in llm-guard). Idempotent.
+
+    FAIL CLOSED: refuses to start an input firewall with zero scanners.
+    """
     if _STATE["in"] is not None and _STATE["out"] is not None:
         return
+    if not INPUT_SCANNERS:
+        raise ScanConfigError("INPUT_SCANNERS is empty; refusing to start an allow-all firewall")
     in_scanners, vault = build_input_scanners(INPUT_SCANNERS)
     _STATE["in"] = in_scanners
     _STATE["out"] = build_output_scanners(OUTPUT_SCANNERS, vault)
@@ -79,20 +84,63 @@ def _refusal(reason, detail):
     return JSONResponse(body, status_code=status)
 
 
+def _message_text(content):
+    """Extract scannable text from a message's content (str or parts list).
+
+    OpenAI content may be a string or a list of parts. We concatenate every
+    text part. Non-text parts (e.g. image_url) carry no scanner-readable text
+    and are noted so a reviewer can see they were present but unscanned.
+    """
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        out = []
+        for part in content:
+            if isinstance(part, dict):
+                if isinstance(part.get("text"), str):
+                    out.append(part["text"])
+                elif part.get("type") and part.get("type") != "text":
+                    out.append(f"[non-text part: {part.get('type')}]")
+            elif isinstance(part, str):
+                out.append(part)
+        return "\n".join(out)
+    # Unknown shape: stringify so it is scanned rather than silently forwarded.
+    return str(content)
+
+
 def _last_user(messages):
-    """Return the content of the last user message, or '' (pure)."""
+    """Return the content text of the last user message, or '' (pure)."""
     for m in reversed(messages or []):
         if m.get("role") == "user":
-            return m.get("content", "") or ""
+            return _message_text(m.get("content"))
     return ""
+
+
+def collect_scan_text(messages):
+    """Concatenate text from EVERY inbound (non-assistant) message (pure).
+
+    Scanning only the last user message let a caller hide an injection in an
+    earlier user/system message and end with benign text. This scans them all.
+    """
+    parts = []
+    for m in messages or []:
+        if not isinstance(m, dict):
+            parts.append(str(m))
+            continue
+        if m.get("role", "user") in SCANNED_ROLES:
+            parts.append(_message_text(m.get("content")))
+    return "\n".join(p for p in parts if p)
 
 
 @app.post("/v1/chat/completions")
 async def chat(request: Request):
     payload = await request.json()
-    prompt = _last_user(payload.get("messages"))
+    messages = payload.get("messages")
+    scan_text = collect_scan_text(messages)
 
-    gin = scan_input(prompt, _STATE["in"])
+    gin = scan_input(scan_text, _STATE["in"])
     if gin["blocked"]:
         return _refusal("input policy", gin)
 
@@ -109,7 +157,7 @@ async def chat(request: Request):
     data = r.json()
     reply = (data.get("choices", [{}])[0].get("message", {}) or {}).get("content", "") or ""
 
-    gout = scan_output_text(prompt, reply, _STATE["out"])
+    gout = scan_output_text(scan_text, reply, _STATE["out"])
     if gout["blocked"]:
         return _refusal("output policy", gout)
 

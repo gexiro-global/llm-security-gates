@@ -6,12 +6,15 @@ import pytest
 from llm_security_gates import modelscan_gate as mg
 
 
-def _report(by_severity, total=None, version="0.8.8", errors=None):
-    rep = {"summary": {"total_issues_by_severity": by_severity,
-                       "total_issues": total if total is not None else sum(by_severity.values()),
-                       "modelscan_version": version}}
+def _report(by_severity, total=None, version="0.8.8", errors=None, error=None):
+    summary = {"total_issues_by_severity": by_severity,
+               "total_issues": total if total is not None else sum(by_severity.values()),
+               "modelscan_version": version}  # version = completion marker
+    rep = {"summary": summary}
     if errors is not None:
         rep["errors"] = errors
+    if error is not None:
+        rep["error"] = error
     return rep
 
 
@@ -43,29 +46,55 @@ def test_decide_medium_threshold_counts_medium_up():
     assert v["blocking_issues"] == 1
 
 
-def test_decide_handles_missing_summary():
-    v = mg.decide({}, "HIGH")
-    assert v["decision"] == "PASS"
-    assert v["by_severity"] == {"LOW": 0, "MEDIUM": 0, "HIGH": 0, "CRITICAL": 0}
-
-
 def test_decide_rejects_bad_threshold():
     with pytest.raises(ValueError):
-        mg.decide(_report({}), "SEVERE")
+        mg.decide(_report({"HIGH": 0}), "SEVERE")
 
 
 def test_decide_coerces_stringy_counts():
-    v = mg.decide({"summary": {"total_issues_by_severity": {"CRITICAL": "2"},
-                               "total_issues": "2"}}, "HIGH")
+    rep = {"summary": {"total_issues_by_severity": {"CRITICAL": "2"},
+                       "total_issues": "2", "modelscan_version": "0.8.8"}}
+    v = mg.decide(rep, "HIGH")
     assert v["blocking_issues"] == 2
     assert v["total_issues"] == 2
 
 
+# ---- FAIL-CLOSED regression: incomplete reports must NOT pass ----
+
+def test_decide_rejects_empty_report():
+    # {} used to default to a PASS -- the fail-open bug. Now it must raise.
+    with pytest.raises(mg.ScanError):
+        mg.decide({}, "HIGH")
+
+
+def test_decide_rejects_error_only_report():
+    with pytest.raises(mg.ScanError):
+        mg.decide({"error": "scanner blew up"}, "HIGH")
+
+
+def test_decide_rejects_summary_without_severity_map():
+    with pytest.raises(mg.ScanError):
+        mg.decide({"summary": {"total_issues": 0, "modelscan_version": "0.8.8"}}, "HIGH")
+
+
+def test_decide_rejects_summary_without_completion_marker():
+    # severity map + total present but no scanned/version/timestamp => not completed
+    with pytest.raises(mg.ScanError):
+        mg.decide({"summary": {"total_issues_by_severity": {}, "total_issues": 0}}, "HIGH")
+
+
+def test_validate_report_accepts_scanned_marker():
+    rep = {"summary": {"total_issues_by_severity": {}, "total_issues": 0,
+                       "scanned": {"total_scanned": 1}}}
+    assert mg.validate_report(rep) is rep
+
+
 # ---- has_scan_errors() ----
 
-def test_has_scan_errors():
-    assert mg.has_scan_errors(_report({}, errors=["boom"])) is True
-    assert mg.has_scan_errors(_report({})) is False
+def test_has_scan_errors_list_and_singular():
+    assert mg.has_scan_errors(_report({"HIGH": 0}, errors=["boom"])) is True
+    assert mg.has_scan_errors(_report({"HIGH": 0}, error="boom")) is True
+    assert mg.has_scan_errors(_report({"HIGH": 0})) is False
 
 
 # ---- scan() ----
@@ -100,6 +129,18 @@ def test_scan_invalid_report_raises(monkeypatch):
         mg.scan("/some/model.pkl")
 
 
+def test_scan_incomplete_report_raises(monkeypatch):
+    # A scanner that writes an empty/garbled-but-valid JSON must not pass.
+    def fake_run(cmd, **kw):
+        out_path = cmd[cmd.index("-o") + 1]
+        with open(out_path, "w", encoding="utf-8") as fh:
+            json.dump({}, fh)
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+    monkeypatch.setattr(mg.subprocess, "run", fake_run)
+    with pytest.raises(mg.ScanError):
+        mg.scan("/some/model.pkl")
+
+
 # ---- main() exit codes ----
 
 def test_main_missing_path_returns_2():
@@ -129,8 +170,9 @@ def test_main_scan_error_returns_2(monkeypatch, tmp_path):
     assert mg.main([str(model)]) == 2
 
 
-def test_main_reports_modelscan_errors_returns_2(monkeypatch, tmp_path):
+def test_main_incomplete_report_returns_2(monkeypatch, tmp_path):
+    # End-to-end fail-closed: scan returns an empty doc -> decide raises -> exit 2.
     model = tmp_path / "m.pkl"
     model.write_bytes(b"x")
-    monkeypatch.setattr(mg, "scan", lambda p, timeout=300: _report({"LOW": 0}, errors=["parse fail"]))
+    monkeypatch.setattr(mg, "scan", lambda p, timeout=300: {})
     assert mg.main([str(model)]) == 2

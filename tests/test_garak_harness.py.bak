@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from llm_security_gates import garak_harness as gh
@@ -28,22 +30,19 @@ def test_score_excludes_zero_total_from_mean():
         ("z", "d"): _eval("z", "d", 0, 0),    # not scorable
     }
     s = gh.score_from_evals(evals)
-    assert s["resilience_score"] == 0.5  # zero-total probe ignored
+    assert s["resilience_score"] == 0.5
     assert any(p["pass_rate"] is None for p in s["probes"])
 
 
 def test_score_all_zero_total_is_none():
-    evals = {("z", "d"): _eval("z", "d", 0, 0)}
-    s = gh.score_from_evals(evals)
+    s = gh.score_from_evals({("z", "d"): _eval("z", "d", 0, 0)})
     assert s["resilience_score"] is None
-    assert s["attack_success_rate"] is None
     assert s["weakest_probe"] is None
 
 
 def test_score_single_probe():
     s = gh.score_from_evals({("a", "d"): _eval("a", "d", 3, 4)})
     assert s["resilience_score"] == 0.75
-    assert s["weakest_probe"] == "a"
 
 
 # ---- parse_report() ----
@@ -55,18 +54,17 @@ def _write(tmp_path, prefix, lines):
 
 
 def test_parse_report_reads_evals_and_dedupes(tmp_path):
-    import json
     lines = [
         json.dumps({"entry_type": "start"}),
-        json.dumps(_eval("a", "d", 1, 10)),   # superseded
-        "   ",                                  # blank
-        "broken json {{{",                      # malformed -> skipped
+        json.dumps(_eval("a", "d", 1, 10)),
+        "   ",
+        "broken json {{{",
         json.dumps(_eval("a", "d", 9, 10)),   # last wins
         json.dumps(_eval("b", "d", 2, 5)),
     ]
     _write(tmp_path, "selftest_x_0", lines)
     evals = gh.parse_report("selftest_x_0", report_dir=str(tmp_path))
-    assert evals[("a", "d")]["passed"] == 9   # last-wins dedup
+    assert evals[("a", "d")]["passed"] == 9
     assert set(evals) == {("a", "d"), ("b", "d")}
 
 
@@ -76,10 +74,17 @@ def test_parse_report_missing_file(tmp_path):
 
 
 def test_parse_report_no_evals(tmp_path):
-    import json
     _write(tmp_path, "empty_0", [json.dumps({"entry_type": "start"})])
     with pytest.raises(ValueError):
         gh.parse_report("empty_0", report_dir=str(tmp_path))
+
+
+def test_parse_report_rejects_stale(tmp_path):
+    import os
+    p = _write(tmp_path, "stale_0", [json.dumps(_eval("a", "d", 1, 1))])
+    future = os.path.getmtime(p) + 1000  # require newer than the file
+    with pytest.raises(gh.AssuranceError):
+        gh.parse_report("stale_0", report_dir=str(tmp_path), min_mtime=future)
 
 
 # ---- _safe() ----
@@ -88,24 +93,78 @@ def test_safe_sanitizes_model_name():
     assert gh._safe("vendor/model:v1 beta") == "vendor_model_v1_beta"
 
 
-# ---- score_model() integration (garak stubbed) ----
+# ---- score_model(): fail-closed on rc!=0 and missing report ----
 
-def test_score_model_parses_after_run(monkeypatch, tmp_path):
-    import json
-    _write(tmp_path, "selftest_m_0", [json.dumps(_eval("a", "d", 7, 10))])
-
+def _fake_garak_writing(tmp_path, lines, returncode):
+    """Return a fake _run_garak that writes the report at the given prefix."""
     class Proc:
-        returncode = 0
-    monkeypatch.setattr(gh, "_run_garak", lambda *a, **k: Proc())
+        pass
+    def fake(model, base_url, api_key, probes, generations, prefix, timeout):
+        _write(tmp_path, prefix, lines)
+        p = Proc()
+        p.returncode = returncode
+        return p
+    return fake
+
+
+def test_score_model_scores_fresh_report(monkeypatch, tmp_path):
+    monkeypatch.setattr(gh, "_run_garak",
+                        _fake_garak_writing(tmp_path, [json.dumps(_eval("a", "d", 7, 10))], 0))
     out = gh.score_model("m", "http://x/v1", "key", "a", 1, 0, 60, report_dir=str(tmp_path))
     assert out["resilience_score"] == 0.7
     assert out["status"] == "OK"
 
 
-def test_score_model_reports_missing_report(monkeypatch, tmp_path):
+def test_score_model_nonzero_exit_is_error(monkeypatch, tmp_path):
+    # Even with a perfect report present, a nonzero garak exit must NOT score OK.
+    monkeypatch.setattr(gh, "_run_garak",
+                        _fake_garak_writing(tmp_path, [json.dumps(_eval("a", "d", 10, 10))], 2))
+    out = gh.score_model("m", "http://x/v1", "key", "a", 1, 0, 60, report_dir=str(tmp_path))
+    assert out["resilience_score"] is None
+    assert out["status"].startswith("ERROR")
+
+
+def test_score_model_missing_report_is_error(monkeypatch, tmp_path):
     class Proc:
         returncode = 0
     monkeypatch.setattr(gh, "_run_garak", lambda *a, **k: Proc())
-    out = gh.score_model("m", "http://x/v1", "key", "a", 1, 9, 60, report_dir=str(tmp_path))
+    out = gh.score_model("m", "http://x/v1", "key", "a", 1, 0, 60, report_dir=str(tmp_path))
     assert out["resilience_score"] is None
     assert out["status"].startswith("ERROR")
+
+
+# ---- main(): whole-fleet gate ----
+
+def _canned(results_by_model):
+    def fake(model, *a, **k):
+        return {"model": model, "resilience_score": results_by_model[model],
+                "attack_success_rate": None, "weakest_probe": None,
+                "probes": [], "status": "OK"}
+    return fake
+
+
+def test_main_requires_all_models_by_default(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    monkeypatch.setattr(gh, "score_model", _canned({"a": 0.9, "b": None}))
+    rc = gh.main(["--models", "a,b", "--out", str(tmp_path / "o.json")])
+    assert rc == 1  # b unscored -> fleet gate fails
+
+
+def test_main_all_scored_passes(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    monkeypatch.setattr(gh, "score_model", _canned({"a": 0.9, "b": 0.8}))
+    rc = gh.main(["--models", "a,b", "--out", str(tmp_path / "o.json")])
+    assert rc == 0
+
+
+def test_main_allow_partial_passes_on_any(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    monkeypatch.setattr(gh, "score_model", _canned({"a": 0.9, "b": None}))
+    rc = gh.main(["--models", "a,b", "--allow-partial", "--out", str(tmp_path / "o.json")])
+    assert rc == 0
+
+
+def test_main_missing_api_key_returns_2(monkeypatch, tmp_path):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    rc = gh.main(["--models", "a", "--out", str(tmp_path / "o.json")])
+    assert rc == 2

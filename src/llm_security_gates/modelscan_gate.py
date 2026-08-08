@@ -65,10 +65,22 @@ def validate_report(report) -> dict:
         raise ScanError("report summary lacks total_issues_by_severity")
     if "total_issues" not in summary:
         raise ScanError("report summary lacks total_issues")
-    # A finished run stamps at least one completion marker.
-    if not any(k in summary for k in ("scanned", "modelscan_version", "timestamp")):
-        raise ScanError("report summary lacks a completion marker "
+    # A finished run stamps at least one NON-EMPTY completion marker. Presence
+    # alone is not enough: a forged {"modelscan_version": null} must be rejected.
+    if not any(bool(summary.get(k)) for k in ("scanned", "modelscan_version", "timestamp")):
+        raise ScanError("report summary lacks a non-empty completion marker "
                         "(scanned/modelscan_version/timestamp)")
+    # Internal consistency: modelscan's severity counts sum to total_issues. A
+    # mismatch means a truncated or tampered summary -- do not trust it.
+    sev = summary["total_issues_by_severity"]
+    try:
+        sev_sum = sum(int(v or 0) for v in sev.values())
+        total = int(summary.get("total_issues", 0) or 0)
+    except (TypeError, ValueError) as exc:
+        raise ScanError(f"non-numeric issue counts in summary: {exc}")
+    if sev_sum != total:
+        raise ScanError(f"summary inconsistent: severities sum to {sev_sum} "
+                        f"but total_issues={total}")
     return report
 
 
