@@ -25,3 +25,6 @@ garak_assurance.json
 .idea/
 .DS_Store
 pyproject.toml.bak
+
+# editor/tool backups
+*.bak
