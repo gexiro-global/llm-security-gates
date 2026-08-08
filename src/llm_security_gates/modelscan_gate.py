@@ -95,12 +95,19 @@ def scan(path: str, timeout: int = 300) -> dict:
     os.close(fd)
     try:
         try:
-            subprocess.run(
+            proc = subprocess.run(
                 ["modelscan", "-p", path, "-r", "json", "-o", report_path],
                 capture_output=True, text=True, timeout=timeout,
             )
         except FileNotFoundError as exc:  # modelscan not installed
             raise ScanError("modelscan executable not found on PATH") from exc
+        # modelscan's CLI contract: 0 = completed, no issues; 1 = completed, issues
+        # found. Any other code (2/3/4: scan error, unsupported/invalid input) means
+        # the scan did NOT complete -- a clean-looking report from such a run must
+        # not be trusted as a pass.
+        if proc.returncode not in (0, 1):
+            raise ScanError(f"modelscan exited {proc.returncode} (not a completed scan): "
+                            f"{(proc.stderr or '').strip()[:200]}")
         try:
             with open(report_path, encoding="utf-8") as fh:
                 report = json.load(fh)

@@ -145,6 +145,30 @@ def test_scan_invalid_report_raises(monkeypatch):
         mg.scan("/some/model.pkl")
 
 
+def test_scan_rejects_failure_exit_code(monkeypatch):
+    # A clean-looking report emitted with a failure exit code (2/3/4) must not pass.
+    def fake_run(cmd, **kw):
+        out_path = cmd[cmd.index("-o") + 1]
+        with open(out_path, "w", encoding="utf-8") as fh:
+            json.dump(_report({"LOW": 0, "MEDIUM": 0, "HIGH": 0, "CRITICAL": 0}), fh)
+        return subprocess.CompletedProcess(cmd, 2, "", "scan error: unsupported input")
+    monkeypatch.setattr(mg.subprocess, "run", fake_run)
+    with pytest.raises(mg.ScanError):
+        mg.scan("/some/model.pkl")
+
+
+def test_scan_accepts_issues_exit_code(monkeypatch):
+    # rc=1 means "completed, issues found" -- a valid completed scan.
+    def fake_run(cmd, **kw):
+        out_path = cmd[cmd.index("-o") + 1]
+        with open(out_path, "w", encoding="utf-8") as fh:
+            json.dump(_report({"CRITICAL": 1}), fh)
+        return subprocess.CompletedProcess(cmd, 1, "", "")
+    monkeypatch.setattr(mg.subprocess, "run", fake_run)
+    rep = mg.scan("/some/model.pkl")
+    assert mg.decide(rep, "HIGH")["decision"] == "BLOCK"
+
+
 def test_scan_incomplete_report_raises(monkeypatch):
     # A scanner that writes an empty/garbled-but-valid JSON must not pass.
     def fake_run(cmd, **kw):

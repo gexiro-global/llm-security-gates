@@ -89,6 +89,22 @@ def test_validate_report_accepts_scanned_marker():
     assert mg.validate_report(rep) is rep
 
 
+def test_decide_rejects_null_completion_marker():
+    # presence of the key is not enough; a null/empty marker must be rejected
+    rep = {"summary": {"total_issues_by_severity": {}, "total_issues": 0,
+                       "modelscan_version": None}}
+    with pytest.raises(mg.ScanError):
+        mg.decide(rep, "HIGH")
+
+
+def test_decide_rejects_inconsistent_summary():
+    # severity counts must sum to total_issues; a mismatch = truncated/tampered
+    rep = {"summary": {"total_issues_by_severity": {"CRITICAL": 5}, "total_issues": 0,
+                       "modelscan_version": "0.8.8"}}
+    with pytest.raises(mg.ScanError):
+        mg.decide(rep, "HIGH")
+
+
 # ---- has_scan_errors() ----
 
 def test_has_scan_errors_list_and_singular():
