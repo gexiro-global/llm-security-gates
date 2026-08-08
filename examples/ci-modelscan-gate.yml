@@ -1,0 +1,28 @@
+# Example: refuse to publish/deploy a model artifact that fails the supply-chain gate.
+# Runs modelscan-gate before the model is packaged or pushed, so a poisoned artifact
+# (unsafe pickle / Keras deserialization) is rejected before anything loads it.
+name: model-supply-chain-gate
+
+on:
+  pull_request:
+    paths:
+      - "models/**"
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - run: pip install "llm-security-gates[modelscan] @ git+https://github.com/gexiro-global/llm-security-gates.git"
+      - name: Block unsafe model files
+        run: |
+          for f in models/*.pkl models/*.h5; do
+            [ -e "$f" ] || continue
+            modelscan-gate "$f" --block-on HIGH --json   # exit 1 blocks the PR; exit 2 = scan error
+          done

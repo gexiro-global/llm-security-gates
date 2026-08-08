@@ -1,0 +1,18 @@
+name: Feature request
+description: Suggest a new gate, scanner, or capability.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What security gap or workflow friction would this address?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What should it do? Keep it consistent with the fail-closed, offline-testable design.
+    validations:
+      required: true

@@ -1,0 +1,26 @@
+name: Bug report
+description: A gate behaved incorrectly (especially a fail-open).
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What did the gate do, and what should it have done? Fail-open cases (should block but passed) are highest priority.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: The exact command and a minimal input (crafted report/prompt/sitemap). Do not include secrets.
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Package version and Python version.
+    validations:
+      required: true
