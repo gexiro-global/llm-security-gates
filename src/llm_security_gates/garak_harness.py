@@ -26,6 +26,7 @@ import re
 import statistics
 import subprocess
 import sys
+import tempfile
 import uuid
 from datetime import datetime, timezone
 
@@ -117,15 +118,16 @@ def _new_prefix(model, index):
 
 
 def score_model(model, base_url, api_key, probes, generations, index, timeout,
-                report_dir=REPORT_DIR, start_time=None):
+                report_dir=REPORT_DIR):
     """Run garak for one model and score it. Fail-closed on any doubt.
 
-    *start_time* is a unix timestamp captured before the run; the report must be
-    at least that fresh. A non-zero garak exit is treated as an error.
+    Freshness is enforced structurally: a unique uuid prefix, a refusal to reuse
+    a pre-existing report path, and a marker file created on the SAME filesystem
+    as the report just before the run. Because the marker shares the report's
+    clock and mtime granularity, the report must be >= the marker; a stale report
+    from a previous run is strictly older and rejected -- with no time slack. A
+    non-zero garak exit is treated as an error.
     """
-    import time as _time
-    if start_time is None:
-        start_time = _time.time()
     prefix = _new_prefix(model, index)
     out = {"model": model, "resilience_score": None, "attack_success_rate": None,
            "weakest_probe": None, "probes": [], "status": "OK"}
@@ -133,15 +135,16 @@ def score_model(model, base_url, api_key, probes, generations, index, timeout,
     if os.path.exists(report_path):
         out["status"] = "ERROR: report path already exists (refusing reuse)"
         return out
+    os.makedirs(report_dir, exist_ok=True)
+    mfd, marker = tempfile.mkstemp(dir=report_dir, prefix=".garak_marker_")
+    os.close(mfd)
     try:
+        min_mtime = os.path.getmtime(marker)
         proc = _run_garak(model, base_url, api_key, probes, generations, prefix, timeout)
         if proc.returncode != 0:
             out["status"] = f"ERROR: garak exited {proc.returncode} (run not trusted)"
             return out
-        # 2s slack absorbs coarse filesystem mtime granularity; a genuinely stale
-        # report (a previous run) is seconds-to-hours old and still rejected. The
-        # unique uuid prefix already makes stale reuse structurally impossible.
-        evals = parse_report(prefix, report_dir, min_mtime=start_time - 2.0)
+        evals = parse_report(prefix, report_dir, min_mtime=min_mtime)
         scored = score_from_evals(evals)
         out.update(scored)
         if scored["resilience_score"] is None:
@@ -150,11 +153,13 @@ def score_model(model, base_url, api_key, probes, generations, index, timeout,
         out["status"] = "ERROR: garak timeout"
     except Exception as exc:  # never let one model crash the fleet run
         out["status"] = f"ERROR: {exc}"
+    finally:
+        if os.path.exists(marker):
+            os.unlink(marker)
     return out
 
 
 def main(argv=None) -> int:
-    import time as _time
     ap = argparse.ArgumentParser(description="garak -> Model Assurance score")
     ap.add_argument("--models", required=True, help="comma-separated model names")
     ap.add_argument("--base-url", default="https://api.openai.com/v1")
@@ -178,8 +183,7 @@ def main(argv=None) -> int:
     for i, m in enumerate(models):
         print(f"[garak-harness] scoring {m} ...", file=sys.stderr)
         results.append(score_model(m, args.base_url, api_key, args.probes,
-                                   args.generations, i, args.timeout,
-                                   start_time=_time.time()))
+                                   args.generations, i, args.timeout))
 
     report = {"schema": "model-assurance/v1",
               "generated_at": datetime.now(timezone.utc).isoformat(),

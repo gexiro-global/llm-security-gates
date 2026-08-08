@@ -133,6 +133,23 @@ def test_score_model_missing_report_is_error(monkeypatch, tmp_path):
     assert out["status"].startswith("ERROR")
 
 
+def test_score_model_rejects_backdated_report(monkeypatch, tmp_path):
+    # End-to-end freshness: a report whose mtime predates the run start (a stale
+    # leftover) must be rejected, with no time slack.
+    import os
+    def fake(model, base_url, api_key, probes, generations, prefix, timeout):
+        p = _write(tmp_path, prefix, [json.dumps(_eval("a", "d", 10, 10))])
+        os.utime(p, (1_000_000_000, 1_000_000_000))  # backdate to year 2001
+        class Proc:
+            returncode = 0
+        return Proc()
+    monkeypatch.setattr(gh, "_run_garak", fake)
+    out = gh.score_model("m", "http://x/v1", "key", "a", 1, 0, 60, report_dir=str(tmp_path))
+    assert out["resilience_score"] is None
+    assert out["status"].startswith("ERROR")
+    assert "stale" in out["status"]
+
+
 def test_new_prefix_is_unique():
     a = gh._new_prefix("m", 0)
     b = gh._new_prefix("m", 0)

@@ -133,6 +133,24 @@ def test_score_model_missing_report_is_error(monkeypatch, tmp_path):
     assert out["status"].startswith("ERROR")
 
 
+def test_new_prefix_is_unique():
+    a = gh._new_prefix("m", 0)
+    b = gh._new_prefix("m", 0)
+    assert a != b  # uuid suffix prevents stale-report reuse across runs
+
+
+def test_score_model_refuses_preexisting_report(monkeypatch, tmp_path):
+    # Pin the prefix and pre-create its report: score_model must refuse to reuse it.
+    monkeypatch.setattr(gh, "_new_prefix", lambda model, index: "pinned_0")
+    _write(tmp_path, "pinned_0", [json.dumps(_eval("a", "d", 10, 10))])
+    def _should_not_run(*a, **k):
+        raise AssertionError("garak must not run when the report path already exists")
+    monkeypatch.setattr(gh, "_run_garak", _should_not_run)
+    out = gh.score_model("m", "http://x/v1", "key", "a", 1, 0, 60, report_dir=str(tmp_path))
+    assert out["resilience_score"] is None
+    assert "already exists" in out["status"]
+
+
 # ---- main(): whole-fleet gate ----
 
 def _canned(results_by_model):
