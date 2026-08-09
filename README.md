@@ -1,9 +1,9 @@
-# llm-security-gates — prompt-injection, model supply-chain, and red-team gates for LLMs
+# llm-security-gates
 
-[![ci](https://github.com/gexiro-global/llm-security-gates/actions/workflows/ci.yml/badge.svg)](https://github.com/gexiro-global/llm-security-gates/actions/workflows/ci.yml)
+[![CI](https://github.com/gexiro-global/llm-security-gates/actions/workflows/ci.yml/badge.svg)](https://github.com/gexiro-global/llm-security-gates/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/llm-security-gates.svg)](https://pypi.org/project/llm-security-gates/)
+[![Python](https://img.shields.io/pypi/pyversions/llm-security-gates.svg)](https://pypi.org/project/llm-security-gates/)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
 
 Three small, independent **security gates for LLM systems**, each a thin, tested
 wrapper that turns a best-in-class open-source tool into a drop-in *pass / block*
@@ -154,5 +154,10 @@ decision points; ModelScan, LLM Guard, and garak do the detection. See
 
 ## License
 
-[Apache-2.0](LICENSE) © 2026 Gexiro Global Enterprises Ltd. The wrapped tools remain
-under their own licenses.
+[Apache-2.0](LICENSE).
+
+Built and maintained by [Gexiro Global Enterprises Ltd](https://gexiro.com).
+
+The wrapped tools remain under their own licenses.
+
+Part of the [Gexiro open-source toolkit](https://github.com/gexiro-global).

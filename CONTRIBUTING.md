@@ -27,14 +27,6 @@ boundary so tests stay offline and fast.
 - Keep the verdict contracts (JSON shapes, exit codes) stable and documented.
 - Match the surrounding code; keep functions small and testable.
 
-## Sign-off
-
-Contributions should carry a Developer Certificate of Origin sign-off:
-
-```text
-Signed-off-by: Your Name <you@example.com>
-```
-
 ## Scope
 
 This is orchestration glue around mature FOSS security tools. Contributions that add
