@@ -9,6 +9,7 @@ description = "Practical, FOSS-backed security gates for LLM systems: model-file
 readme = "README.md"
 requires-python = ">=3.9"
 license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 authors = [
   {name = "Gexiro Global Enterprises Ltd"}
 ]
@@ -50,6 +51,9 @@ garak-assurance = "llm_security_gates.garak_harness:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["llm_security_gates*"]
+
+[tool.setuptools.package-data]
+llm_security_gates = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
