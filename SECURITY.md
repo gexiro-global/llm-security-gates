@@ -8,7 +8,7 @@ llm-security-gates 0.x is experimental. Security fixes are handled on the latest
 ## Reporting a Vulnerability
 
 If GitHub private vulnerability reporting is enabled for this repository, use it.
-Otherwise, email `security@gexiro.com`.
+Otherwise, email `admin@gexiro.com`.
 
 Please include:
 
