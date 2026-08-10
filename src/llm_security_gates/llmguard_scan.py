@@ -12,10 +12,10 @@ Model-free (fast, no download): secrets, invisible_text.
 Model-based (first load pulls HF weights): prompt_injection, ban_code,
 malicious_urls, no_refusal.
 
-Fail-closed contract: the INPUT firewall must never allow-all. ``scan_input``
-refuses to run with zero scanners and refuses a result that carries no verdicts
-(a scanner-API incompatibility). Output scanning with zero scanners is a valid
-configuration (you may choose to guard only the input side).
+Fail-closed contract: neither scan path may silently allow-all. Both scan
+functions refuse to run with zero scanners and refuse a result that carries no
+verdicts (a scanner-API incompatibility). Output-only pass-through requires the
+explicit ``allow_empty_output_scanners=True`` opt-out.
 
 ``llm-guard`` is imported lazily inside the builder/scan functions, so this
 module imports cleanly (and the result-shaping logic stays unit-testable) on a
@@ -25,6 +25,7 @@ import argparse
 import json
 import sys
 import time
+import warnings
 
 DEFAULT_INPUT_SCANNERS = "secrets,invisible_text"
 
@@ -109,10 +110,17 @@ def scan_input(text, scanners):
                   round((time.perf_counter() - t0) * 1000, 1))
 
 
-def scan_output_text(prompt, output, scanners):
-    """Scan a model reply. Zero output scanners is a valid (pass-through) config."""
+def scan_output_text(prompt, output, scanners, *, allow_empty_output_scanners=False):
+    """Scan a model reply, failing closed unless pass-through is explicit."""
     t0 = time.perf_counter()
     if not scanners:
+        if not allow_empty_output_scanners:
+            raise ScanConfigError("output firewall requires at least one scanner")
+        warnings.warn(
+            "output scanning is explicitly disabled; model replies will pass uninspected",
+            RuntimeWarning,
+            stacklevel=2,
+        )
         return _shape("output", output, output, {}, {},
                       round((time.perf_counter() - t0) * 1000, 1))
     from llm_guard import scan_output
@@ -130,6 +138,10 @@ def main(argv=None) -> int:
                     help="csv of scanner names for the chosen mode")
     ap.add_argument("--text", required=True, help="text to scan (output mode: the model reply)")
     ap.add_argument("--prompt", default="", help="original prompt (output mode only)")
+    ap.add_argument(
+        "--allow-empty-output-scanners", action="store_true",
+        help="explicitly allow output mode to pass through when --scanners is empty",
+    )
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
 
@@ -145,7 +157,10 @@ def main(argv=None) -> int:
     if args.mode == "input":
         res = scan_input(args.text, scanners)
     else:
-        res = scan_output_text(args.prompt, args.text, scanners)
+        res = scan_output_text(
+            args.prompt, args.text, scanners,
+            allow_empty_output_scanners=args.allow_empty_output_scanners,
+        )
     res["scanner_load_ms"] = load_ms
     res["scanners"] = names
 

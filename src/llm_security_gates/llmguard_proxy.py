@@ -10,6 +10,8 @@ Environment:
     BACKEND_API_KEY   bearer for upstream (optional)
     INPUT_SCANNERS    csv (default prompt_injection,secrets,invisible_text,ban_code)
     OUTPUT_SCANNERS   csv (default sensitive,malicious_urls)
+    ALLOW_EMPTY_OUTPUT_SCANNERS
+                      true only to explicitly disable output inspection
     GUARD_BLOCK_MODE  refuse | reject  (default refuse -> 200 OpenAI-style refusal)
 
 Run:  uvicorn llm_security_gates.llmguard_proxy:app --host 127.0.0.1 --port 18091
@@ -37,6 +39,8 @@ INPUT_SCANNERS = parse_scanner_names(os.environ.get(
     "INPUT_SCANNERS", "prompt_injection,secrets,invisible_text,ban_code"))
 OUTPUT_SCANNERS = parse_scanner_names(os.environ.get(
     "OUTPUT_SCANNERS", "sensitive,malicious_urls"))
+ALLOW_EMPTY_OUTPUT_SCANNERS = os.environ.get(
+    "ALLOW_EMPTY_OUTPUT_SCANNERS", "").strip().lower() == "true"
 BLOCK_MODE = os.environ.get("GUARD_BLOCK_MODE", "refuse")
 UPSTREAM_TIMEOUT = float(os.environ.get("UPSTREAM_TIMEOUT", "120"))
 
@@ -52,12 +56,18 @@ def set_scanners(input_scanners, output_scanners):
 def load_scanners():
     """Build the configured scanner sets (pulls in llm-guard). Idempotent.
 
-    FAIL CLOSED: refuses to start an input firewall with zero scanners.
+    FAIL CLOSED: refuses to start with an empty scanner set unless output
+    inspection was explicitly disabled.
     """
     if _STATE["in"] is not None and _STATE["out"] is not None:
         return
     if not INPUT_SCANNERS:
         raise ScanConfigError("INPUT_SCANNERS is empty; refusing to start an allow-all firewall")
+    if not OUTPUT_SCANNERS and not ALLOW_EMPTY_OUTPUT_SCANNERS:
+        raise ScanConfigError(
+            "OUTPUT_SCANNERS is empty; set ALLOW_EMPTY_OUTPUT_SCANNERS=true "
+            "to explicitly disable output inspection"
+        )
     in_scanners, vault = build_input_scanners(INPUT_SCANNERS)
     _STATE["in"] = in_scanners
     _STATE["out"] = build_output_scanners(OUTPUT_SCANNERS, vault)
@@ -159,7 +169,10 @@ async def chat(request: Request):
     data = r.json()
     reply = (data.get("choices", [{}])[0].get("message", {}) or {}).get("content", "") or ""
 
-    gout = scan_output_text(scan_text, reply, _STATE["out"])
+    gout = scan_output_text(
+        scan_text, reply, _STATE["out"],
+        allow_empty_output_scanners=ALLOW_EMPTY_OUTPUT_SCANNERS,
+    )
     if gout["blocked"]:
         return _refusal("output policy", gout)
 

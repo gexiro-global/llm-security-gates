@@ -89,7 +89,11 @@ The firewall scans the **entire inbound message set** (every user / system / dev
 message, and every text part of structured content), not just the last user turn — so an
 injection hidden in an earlier message cannot slip through behind a benign final message.
 It refuses to start with an empty input-scanner set rather than silently allowing all
-traffic.
+traffic. Output inspection also fails closed: an empty or unset-resolving
+`OUTPUT_SCANNERS` value raises a configuration error. Input-only deployments must opt in
+explicitly with `ALLOW_EMPTY_OUTPUT_SCANNERS=true`; this emits a runtime warning whenever
+an output is passed through uninspected. The single-string CLI offers the equivalent
+`--allow-empty-output-scanners` flag for output mode.
 
 The same scanning core is available as a CLI for benchmarking a single string:
 

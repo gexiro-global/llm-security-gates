@@ -96,9 +96,16 @@ def test_scan_output_uses_library(fake_llm_guard):
     assert res["mode"] == "output"
 
 
-def test_scan_output_empty_scanners_is_passthrough_no_import():
-    # Zero output scanners is a valid config and must not require llm_guard.
+def test_scan_output_rejects_empty_scanner_list():
+    with pytest.raises(ls.ScanConfigError):
+        ls.scan_output_text("prompt", "reply", scanners=[])
+
+
+def test_scan_output_explicit_empty_opt_out_warns_and_passes_without_import():
     sys.modules.pop("llm_guard", None)
-    res = ls.scan_output_text("prompt", "reply", scanners=[])
+    with pytest.warns(RuntimeWarning, match="explicitly disabled"):
+        res = ls.scan_output_text(
+            "prompt", "reply", scanners=[], allow_empty_output_scanners=True,
+        )
     assert res["blocked"] is False
     assert res["per_scanner"] == {}

@@ -7,6 +7,10 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 - Ship the inline type-information marker and explicit license-file metadata.
+- Bound build, optional runtime, and development dependencies to tested next-major ceilings
+  and complete the package classifiers.
+- Fail closed when no output scanners resolve; input-only deployments must explicitly opt
+  out with `ALLOW_EMPTY_OUTPUT_SCANNERS=true` (or the CLI flag) and receive a warning.
 
 ## [0.1.0] - 2026-08-08
 

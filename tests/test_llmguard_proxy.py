@@ -46,6 +46,26 @@ def test_load_scanners_refuses_empty_input_set(monkeypatch):
         proxy.load_scanners()
 
 
+def test_load_scanners_refuses_empty_output_set_by_default(monkeypatch):
+    monkeypatch.setattr(proxy, "INPUT_SCANNERS", ["secrets"])
+    monkeypatch.setattr(proxy, "OUTPUT_SCANNERS", [])
+    monkeypatch.setattr(proxy, "ALLOW_EMPTY_OUTPUT_SCANNERS", False)
+    proxy.set_scanners(None, None)
+    with pytest.raises(ScanConfigError, match="OUTPUT_SCANNERS is empty"):
+        proxy.load_scanners()
+
+
+def test_load_scanners_allows_explicit_empty_output_opt_out(monkeypatch):
+    monkeypatch.setattr(proxy, "INPUT_SCANNERS", ["secrets"])
+    monkeypatch.setattr(proxy, "OUTPUT_SCANNERS", [])
+    monkeypatch.setattr(proxy, "ALLOW_EMPTY_OUTPUT_SCANNERS", True)
+    monkeypatch.setattr(proxy, "build_input_scanners", lambda names: ([object()], object()))
+    monkeypatch.setattr(proxy, "build_output_scanners", lambda names, vault: [])
+    proxy.set_scanners(None, None)
+    proxy.load_scanners()
+    assert proxy._STATE["out"] == []
+
+
 # ---- fakes ----
 
 class FakeResp:
@@ -87,6 +107,7 @@ def _verdict(blocked):
 def client(monkeypatch):
     proxy.set_scanners([], [])  # short-circuit the ML load at startup
     monkeypatch.setattr(proxy, "BLOCK_MODE", "refuse")
+    monkeypatch.setattr(proxy, "ALLOW_EMPTY_OUTPUT_SCANNERS", True)
     return TestClient(proxy.app)
 
 
@@ -96,7 +117,7 @@ def _body(messages):
 
 def test_clean_request_passes_through(client, monkeypatch):
     monkeypatch.setattr(proxy, "scan_input", lambda t, s: _verdict(False))
-    monkeypatch.setattr(proxy, "scan_output_text", lambda p, o, s: _verdict(False))
+    monkeypatch.setattr(proxy, "scan_output_text", lambda p, o, s, **kwargs: _verdict(False))
     monkeypatch.setattr(proxy.httpx, "AsyncClient", lambda *a, **k: FakeClient(_upstream_ok()))
     r = client.post("/v1/chat/completions",
                     json=_body([{"role": "user", "content": "hi"}]))
@@ -153,7 +174,7 @@ def test_injection_in_assistant_role_message_is_blocked(client, monkeypatch):
 
 def test_blocked_output_refuses(client, monkeypatch):
     monkeypatch.setattr(proxy, "scan_input", lambda t, s: _verdict(False))
-    monkeypatch.setattr(proxy, "scan_output_text", lambda p, o, s: _verdict(True))
+    monkeypatch.setattr(proxy, "scan_output_text", lambda p, o, s, **kwargs: _verdict(True))
     monkeypatch.setattr(proxy.httpx, "AsyncClient", lambda *a, **k: FakeClient(_upstream_ok("leak")))
     r = client.post("/v1/chat/completions",
                     json=_body([{"role": "user", "content": "hi"}]))
