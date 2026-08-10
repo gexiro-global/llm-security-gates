@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "llm-security-gates"
-version = "0.1.0"
+version = "0.1.1"
 description = "Practical, FOSS-backed security gates for LLM systems: model-file supply-chain gate, runtime I/O firewall proxy, and model resilience scoring."
 readme = "README.md"
 requires-python = ">=3.9"
