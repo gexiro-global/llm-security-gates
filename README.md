@@ -40,12 +40,16 @@ Each gate is usable on its own; you never need to install a backend you don't ru
 Block unsafe model artifacts **before** an inference server loads them.
 
 ```bash
-modelscan-gate ./pulled-model.pkl --block-on HIGH --json
-# exit 0 = PASS (safe to load) | 1 = BLOCK (unsafe) | 2 = scan error
+# Point modelscan-gate at the model artifact you are about to load.
+# Requires ModelScan (pip install modelscan); the path below is a placeholder for your own file.
+modelscan-gate path/to/model.pkl --block-on HIGH --json
+# exit 0 = PASS (safe to load) | 1 = BLOCK (unsafe) | 2 = scan error (ModelScan missing or file unreadable)
 ```
 
+Example `--json` output when an unsafe artifact is blocked (one HIGH-severity issue):
+
 ```json
-{"path": "./pulled-model.pkl", "decision": "BLOCK", "block_on": "HIGH",
+{"path": "path/to/model.pkl", "decision": "BLOCK", "block_on": "HIGH",
  "blocking_issues": 1, "total_issues": 3,
  "by_severity": {"LOW": 2, "MEDIUM": 0, "HIGH": 1, "CRITICAL": 0}}
 ```
