@@ -8,4 +8,4 @@ This page is an evidence index, not a certification. The evidence does not prove
 - CodeQL, dependency review, Dependabot and OpenSSF Scorecard are configured in `.github/`.
 - Third-party actions are pinned to immutable commit SHAs with version comments.
 
-The Scorecard badge is intentionally withheld until a successful default-branch run has produced a public API result. `.bestpractices.json` contains evidence-backed automation proposals only; it is not an OpenSSF Best Practices or OSPS Baseline claim. A human must review any badge submission.
+The official public Scorecard result is 6.3, generated 2026-09-04T13:39:16Z for commit `ce2b610421113ec2c396aeba04f6c7ca279eea84`; see the [official public viewer](https://scorecard.dev/viewer/?uri=github.com/gexiro-global/llm-security-gates). This numeric result is point-in-time posture evidence, not a certification. `.bestpractices.json` contains evidence-backed automation proposals only; it is not an OpenSSF Best Practices or OSPS Baseline claim. A human must review any badge submission.
