@@ -5,6 +5,8 @@
 [![Python](https://img.shields.io/pypi/pyversions/llm-security-gates.svg)](https://pypi.org/project/llm-security-gates/)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
+[Security and trust evidence](docs/SECURITY-TRUST.md) documents the project's policies and automated checks. No certification or badge level is claimed.
+
 Three small, independent **security gates for LLM systems**, each a thin, tested
 wrapper that turns a best-in-class open-source tool into a drop-in *pass / block*
 decision you can put in a cron job, a CI step, or a request path.
